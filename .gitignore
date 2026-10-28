@@ -1,0 +1,7 @@
+build/
+.venv/
+onnxruntime-linux-x64-*/
+*.tgz
+runs/
+*.pt
+models/*.onnx
