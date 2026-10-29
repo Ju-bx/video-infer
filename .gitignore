@@ -5,3 +5,4 @@ onnxruntime-linux-x64-*/
 runs/
 *.pt
 models/*.onnx
+images/
