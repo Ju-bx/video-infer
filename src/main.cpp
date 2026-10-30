@@ -8,30 +8,24 @@ const int INPUT_W = 640;
 const int INPUT_H = 640;
 
 std::vector<float> preprocess(const cv::Mat& bgr) {
-    // ① 縮放成 640×640
     cv::Mat resized;
     cv::resize(bgr, resized, cv::Size(INPUT_W, INPUT_H));
 
-    // ② BGR → RGB
     cv::Mat rgb;
     cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
 
-    // ③ uint8（0~255）→ float（0~1）
     cv::Mat f32;
     rgb.convertTo(f32, CV_32FC3, 1.0 / 255.0);
 
-    // ④ HWC → CHW
     std::vector<float> chw(3 * INPUT_H * INPUT_W);
-    const float* src = f32.ptr<float>(0);   // 指向 HWC 資料的開頭
+    const float* src = f32.ptr<float>(0);
 
-    // TODO：用三層迴圈（c、y、x），把 src 的資料搬到 chw
-    //   chw[CHW 的位置] = src[HWC 的位置];
-    for (int c = 0; c < 3; ++c) {               // 每個顏色
-        for (int y = 0; y < INPUT_H; ++y) {     // 每一列
-            for (int x = 0; x < INPUT_W; ++x) { // 每一行
-                int hwc_index = (y * INPUT_W + x) * 3 + c;   // 在 src 的第幾格
-                int chw_index = c * INPUT_H * INPUT_W + (y * INPUT_W + x);                      // 在 chw 的第幾格
-                chw[chw_index] = src[hwc_index];             // 搬過去
+    for (int c = 0; c < 3; ++c) {               
+        for (int y = 0; y < INPUT_H; ++y) {     
+            for (int x = 0; x < INPUT_W; ++x) { 
+                int hwc_index = (y * INPUT_W + x) * 3 + c;  
+                int chw_index = c * INPUT_H * INPUT_W + (y * INPUT_W + x); 
+                chw[chw_index] = src[hwc_index];
             }
         }
     }
@@ -51,9 +45,45 @@ std::string shape_to_string(const std::vector<int64_t>& shape) {
     return result;
 }
 
+struct Detection {
+    float cx, cy, w, h;
+    float score;
+    int class_id;
+};
+
+std::vector<Detection> decode(const float* out, int num_boxes,
+                              int num_classes, float conf_thresh) {
+    std::vector<Detection> dets;
+
+    for (int i = 0; i < num_boxes; ++i) {
+
+        float best_score = 0;
+        int best_class = -1;
+        for (int c = 0; c < num_classes; ++c) {
+            float s = out[(4 + c) * num_boxes + i];
+            if (s > best_score) {
+                best_score = s;
+                best_class = c;
+            }
+        }
+
+        if (best_score < conf_thresh) continue;
+
+        Detection d;
+        d.cx = out[0 * num_boxes + i];
+        d.cy = out[1 * num_boxes + i];
+        d.w  = out[2 * num_boxes + i];
+        d.h  = out[3 * num_boxes + i];
+        d.score = best_score;
+        d.class_id = best_class;
+        dets.push_back(d);
+    }
+    return dets;
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: " << argv[0] << " <model.onnx><image>\n";
+        std::cerr << "usage: " << argv[0] << " <model.onnx> <image>\n";
         return 1;
     }
 
@@ -111,13 +141,12 @@ int main(int argc, char* argv[]) {
 
         Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
             mem,
-            input.data(),        // 空格 A：input 資料的指標
-            input.size(),        // 空格 B：input 有幾個元素
-            input_shape.data(),        // 空格 C：input_shape 資料的指標
-            input_shape.size()// 空格 D：input_shape 有幾個維度
+            input.data(),
+            input.size(),
+            input_shape.data(),
+            input_shape.size()
         );
 
-        // ② 呼叫模型
         const char* input_names[]  = {"images"};
         const char* output_names[] = {"output0"};
 
@@ -127,14 +156,21 @@ int main(int argc, char* argv[]) {
             output_names, 1
         );
 
-        // ③ 拿出結果
         float* out = outputs[0].GetTensorMutableData<float>();
         auto out_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
 
-        // ④ 印出來
-        std::cout << "output shape: " << shape_to_string(out_shape) << "\n";   // 空格 E：用你寫的函式
+        std::cout << "output shape: " << shape_to_string(out_shape) << "\n";
         for (int i = 0; i < 5; ++i) {
             std::cout << "out[" << i << "] = " << out[i] << "\n";
+        }
+
+        std::vector<Detection> dets = decode(out, 8400, 80, 0.25f);
+        std::cout << "detections: " << dets.size() << "\n";
+        for (size_t k = 0; k < dets.size() && k < 10; ++k) {
+            const Detection& d = dets[k];
+            std::cout << "class=" << d.class_id << " score=" << d.score
+                    << " cx=" << d.cx << " cy=" << d.cy
+                    << " w=" << d.w << " h=" << d.h << "\n";
         }
 
     } catch (const Ort::Exception& e) {
