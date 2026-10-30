@@ -53,7 +53,7 @@ std::string shape_to_string(const std::vector<int64_t>& shape) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: " << argv[0] << " <model.onnx>\n";
+        std::cerr << "usage: " << argv[0] << " <model.onnx><image>\n";
         return 1;
     }
 
@@ -102,6 +102,39 @@ int main(int argc, char* argv[]) {
                       << input[c * plane + 1] << " "
                       << input[c * plane + 2]
                       << "  mean=" << sum / plane << "\n";
+        }
+
+
+        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+        std::vector<int64_t> input_shape = {1, 3, INPUT_H, INPUT_W};
+
+        Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+            mem,
+            input.data(),        // 空格 A：input 資料的指標
+            input.size(),        // 空格 B：input 有幾個元素
+            input_shape.data(),        // 空格 C：input_shape 資料的指標
+            input_shape.size()// 空格 D：input_shape 有幾個維度
+        );
+
+        // ② 呼叫模型
+        const char* input_names[]  = {"images"};
+        const char* output_names[] = {"output0"};
+
+        auto outputs = session.Run(
+            Ort::RunOptions{nullptr},
+            input_names, &input_tensor, 1,
+            output_names, 1
+        );
+
+        // ③ 拿出結果
+        float* out = outputs[0].GetTensorMutableData<float>();
+        auto out_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
+
+        // ④ 印出來
+        std::cout << "output shape: " << shape_to_string(out_shape) << "\n";   // 空格 E：用你寫的函式
+        for (int i = 0; i < 5; ++i) {
+            std::cout << "out[" << i << "] = " << out[i] << "\n";
         }
 
     } catch (const Ort::Exception& e) {
