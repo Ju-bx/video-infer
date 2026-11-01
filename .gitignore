@@ -6,3 +6,4 @@ runs/
 *.pt
 models/*.onnx
 images/
+result.jpg
