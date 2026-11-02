@@ -2,10 +2,17 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <chrono>
 #include <opencv2/opencv.hpp>
+
+using Clock = std::chrono::steady_clock;
 
 const int INPUT_W = 640;
 const int INPUT_H = 640;
+
+double ms_between(Clock::time_point a, Clock::time_point b) {
+    return std::chrono::duration<double, std::milli>(b - a).count();
+}
 
 const std::vector<std::string> COCO_NAMES = {
     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat","traffic light",
@@ -17,6 +24,13 @@ const std::vector<std::string> COCO_NAMES = {
     "dining table","toilet","tv","laptop","mouse","remote","keyboard","cell phone","microwave","oven",
     "toaster","sink","refrigerator","book","clock","vase","scissors","teddy bear","hair drier","toothbrush"
 };
+
+struct Timing {
+    double pre_ms   = 0;   // 前處理
+    double infer_ms = 0;   // 推論
+    double post_ms  = 0;   // 後處理
+};
+
 
 std::vector<float> preprocess(const cv::Mat& bgr) {
     cv::Mat resized;
@@ -168,8 +182,10 @@ void draw_detections(cv::Mat& img, const std::vector<Detection>& dets) {
     }
 }
 
-std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame){
+std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame, Timing& t){
+    auto t0 = Clock::now();
     std::vector<float> input = preprocess(frame);
+    auto t1 = Clock::now();
 
     Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     std::vector<int64_t> input_shape = {1, 3, INPUT_H, INPUT_W};
@@ -180,7 +196,7 @@ std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame){
         input_shape.data(),
         input_shape.size()
     );
-
+    
     const char* input_names[]  = {"images"};
     const char* output_names[] = {"output0"};
 
@@ -191,9 +207,17 @@ std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame){
     );
 
     float* out = outputs[0].GetTensorMutableData<float>();
+    auto t2 = Clock::now();
 
     std::vector<Detection> dets = decode(out, 8400, 80, 0.25f);
-    return nms(dets, 0.7f);
+    std::vector<Detection>nms_result = nms(dets, 0.7f);
+    auto t3 = Clock::now();
+
+    t.pre_ms   = ms_between(t0, t1);
+    t.infer_ms = ms_between(t1, t2);
+    t.post_ms  = ms_between(t2, t3);
+
+    return nms_result;
 }
 
 int main(int argc, char* argv[]) {
@@ -246,17 +270,39 @@ int main(int argc, char* argv[]) {
         // 逐格處理
         cv::Mat frame;
         int frame_count = 0;
+        double total_pre = 0, total_infer = 0, total_post = 0;
+        double total_frame = 0;
         while (true) {
+            auto f0 = Clock::now();
+
             cap >> frame;                 // 讀下一格
             if (frame.empty()) break;     // 讀不到了，影片結束
 
-            std::vector<Detection> dets = detect(session, frame);   // ← 你要寫的函式
+            Timing t;
+            std::vector<Detection> dets = detect(session, frame, t);
+            total_pre += t.pre_ms;
+            total_infer += t.infer_ms;
+            total_post += t.post_ms;
+
             draw_detections(frame, dets);
             writer.write(frame);          // 寫進輸出影片
+
+            auto f1 = Clock::now();
+            total_frame += ms_between(f0, f1);
 
             frame_count++;
         }
         std::cout << "processed " << frame_count << " frames\n";
+        std::cout << "avg preprocess : " << total_pre   / frame_count << " ms\n";
+        std::cout << "avg inference  : " << total_infer / frame_count << " ms\n";
+        std::cout << "avg postprocess: " << total_post  / frame_count << " ms\n";
+
+        double avg_frame = total_frame / frame_count;
+        double avg_detect = (total_pre + total_infer + total_post) / frame_count;
+
+        std::cout << "avg per frame  : " << avg_frame << " ms\n";
+        std::cout << "  outside detect: " << avg_frame - avg_detect << " ms\n";   // 讀取 + 畫框 + 寫影片
+        std::cout << "FPS            : " << 1000.0 / avg_frame << "\n";
 
     } catch (const Ort::Exception& e) {
         std::cerr << "ONNX Runtime error: " << e.what() << "\n";
