@@ -168,9 +168,37 @@ void draw_detections(cv::Mat& img, const std::vector<Detection>& dets) {
     }
 }
 
+std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame){
+    std::vector<float> input = preprocess(frame);
+
+    Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    std::vector<int64_t> input_shape = {1, 3, INPUT_H, INPUT_W};
+    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+        mem,
+        input.data(),
+        input.size(),
+        input_shape.data(),
+        input_shape.size()
+    );
+
+    const char* input_names[]  = {"images"};
+    const char* output_names[] = {"output0"};
+
+    auto outputs = session.Run(
+        Ort::RunOptions{nullptr},
+        input_names, &input_tensor, 1,
+        output_names, 1
+    );
+
+    float* out = outputs[0].GetTensorMutableData<float>();
+
+    std::vector<Detection> dets = decode(out, 8400, 80, 0.25f);
+    return nms(dets, 0.7f);
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: " << argv[0] << " <model.onnx> <image>\n";
+        std::cerr << "usage: " << argv[0] << " <model.onnx> <video>\n";
         return 1;
     }
 
@@ -200,77 +228,35 @@ int main(int argc, char* argv[]) {
                       << shape_to_string(shape) << "\n";
         }
 
-        cv::Mat img = cv::imread(argv[2]);
-        if (img.empty()) {
-            std::cerr << "cannot read image: " << argv[2] << "\n";
+        // 打開影片
+        cv::VideoCapture cap(argv[2]);
+        if (!cap.isOpened()) {
+            std::cerr << "cannot open video: " << argv[2] << "\n";
             return 1;
         }
-        std::cout << "image: " << img.cols << "x" << img.rows << "\n";
 
-        std::vector<float> input = preprocess(img);
-        std::cout << "input size: " << input.size() << "\n";
+        // 準備輸出影片：跟輸入一樣的 FPS 和大小
+        double fps = cap.get(cv::CAP_PROP_FPS);
+        int w = (int)cap.get(cv::CAP_PROP_FRAME_WIDTH);
+        int h = (int)cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+        cv::VideoWriter writer("result.avi",
+                            cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
+                            fps, cv::Size(w, h));
 
-        const int plane = INPUT_H * INPUT_W;
-        for (int c = 0; c < 3; ++c) {
-            double sum = 0;
-            for (int i = 0; i < plane; ++i) sum += input[c * plane + i];
-            std::cout << "channel " << c << ": "
-                      << input[c * plane + 0] << " "
-                      << input[c * plane + 1] << " "
-                      << input[c * plane + 2]
-                      << "  mean=" << sum / plane << "\n";
+        // 逐格處理
+        cv::Mat frame;
+        int frame_count = 0;
+        while (true) {
+            cap >> frame;                 // 讀下一格
+            if (frame.empty()) break;     // 讀不到了，影片結束
+
+            std::vector<Detection> dets = detect(session, frame);   // ← 你要寫的函式
+            draw_detections(frame, dets);
+            writer.write(frame);          // 寫進輸出影片
+
+            frame_count++;
         }
-
-
-        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-
-        std::vector<int64_t> input_shape = {1, 3, INPUT_H, INPUT_W};
-
-        Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
-            mem,
-            input.data(),
-            input.size(),
-            input_shape.data(),
-            input_shape.size()
-        );
-
-        const char* input_names[]  = {"images"};
-        const char* output_names[] = {"output0"};
-
-        auto outputs = session.Run(
-            Ort::RunOptions{nullptr},
-            input_names, &input_tensor, 1,
-            output_names, 1
-        );
-
-        float* out = outputs[0].GetTensorMutableData<float>();
-        auto out_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
-
-        std::cout << "output shape: " << shape_to_string(out_shape) << "\n";
-        for (int i = 0; i < 5; ++i) {
-            std::cout << "out[" << i << "] = " << out[i] << "\n";
-        }
-
-        std::vector<Detection> dets = decode(out, 8400, 80, 0.25f);
-        std::cout << "detections: " << dets.size() << "\n";
-        for (size_t k = 0; k < dets.size() && k < 10; ++k) {
-            const Detection& d = dets[k];
-            std::cout << "class=" << d.class_id << " score=" << d.score
-                    << " cx=" << d.cx << " cy=" << d.cy
-                    << " w=" << d.w << " h=" << d.h << "\n";
-        }
-
-        std::vector<Detection> final_dets = nms(dets, 0.7f);
-        std::cout << "after NMS: " << final_dets.size() << "\n";
-        for (const Detection& d : final_dets) {
-            std::cout << "class=" << d.class_id << " score=" << d.score
-                    << " cx=" << d.cx << " cy=" << d.cy
-                    << " w=" << d.w << " h=" << d.h << "\n";
-        }
-
-        draw_detections(img, final_dets);
-        cv::imwrite("result.jpg", img);
-        std::cout << "saved result.jpg\n";
+        std::cout << "processed " << frame_count << " frames\n";
 
     } catch (const Ort::Exception& e) {
         std::cerr << "ONNX Runtime error: " << e.what() << "\n";

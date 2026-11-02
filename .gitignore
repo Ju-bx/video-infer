@@ -7,3 +7,5 @@ runs/
 models/*.onnx
 images/
 result.jpg
+videos/
+result.avi
