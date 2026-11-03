@@ -8,4 +8,5 @@ models/*.onnx
 images/
 result.jpg
 videos/
-result.avi
+*.avi
+experiments/thread_demo

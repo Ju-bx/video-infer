@@ -4,6 +4,10 @@
 #include <vector>
 #include <chrono>
 #include <opencv2/opencv.hpp>
+#include <thread>
+#include <mutex>
+
+std::mutex cout_mutex;
 
 using Clock = std::chrono::steady_clock;
 
@@ -220,16 +224,72 @@ std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame, Timin
     return nms_result;
 }
 
+void process_stream(Ort::Session& session, const std::string& video_path, int stream_id) {
+    // 打開影片
+    cv::VideoCapture cap(video_path);
+    if (!cap.isOpened()) {
+        std::cerr << "cannot open video: " << video_path << "\n";
+        return;
+    }
+
+    // 準備輸出影片
+    double fps = cap.get(cv::CAP_PROP_FPS);
+    int w = (int)cap.get(cv::CAP_PROP_FRAME_WIDTH);
+    int h = (int)cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    std::string out_name = "result_" + std::to_string(stream_id) + ".avi";
+    cv::VideoWriter writer(out_name,
+                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
+                           fps, cv::Size(w, h));
+
+    // 逐格處理 + 計時：跟原本完全一樣
+    cv::Mat frame;
+    int frame_count = 0;
+    double total_pre = 0, total_infer = 0, total_post = 0, total_frame = 0;
+    while (true) {
+        auto f0 = Clock::now();
+        cap >> frame;
+        if (frame.empty()) break;
+
+        Timing t;
+        std::vector<Detection> dets = detect(session, frame, t);
+        total_pre   += t.pre_ms;
+        total_infer += t.infer_ms;
+        total_post  += t.post_ms;
+
+        draw_detections(frame, dets);
+        writer.write(frame);
+
+        auto f1 = Clock::now();
+        total_frame += ms_between(f0, f1);
+        frame_count++;
+    }
+
+    std::lock_guard<std::mutex> lock(cout_mutex);
+
+    // 印統計：每一行前面加上是第幾路
+    double avg_frame = total_frame / frame_count;
+    std::cout << "[stream " << stream_id << "] frames: " << frame_count
+              << "  infer: " << total_infer / frame_count << " ms"
+              << "  per frame: " << avg_frame << " ms"
+              << "  FPS: " << 1000.0 / avg_frame << "\n";
+}
+
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: " << argv[0] << " <model.onnx> <video>\n";
+        std::cerr << "usage: " << argv[0] << " <model.onnx> <video> [num_streams] [intra_threads]\n";
         return 1;
     }
 
     try {
         Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "video_infer");
 
+        int intra_threads = (argc >= 5) ? std::stoi(argv[4]) : 0;
+
         Ort::SessionOptions options;
+        if (intra_threads > 0) {
+            options.SetIntraOpNumThreads(intra_threads);
+        }
         Ort::Session session(env, argv[1], options);
 
         Ort::AllocatorWithDefaultOptions allocator;
@@ -252,58 +312,24 @@ int main(int argc, char* argv[]) {
                       << shape_to_string(shape) << "\n";
         }
 
-        // 打開影片
-        cv::VideoCapture cap(argv[2]);
-        if (!cap.isOpened()) {
-            std::cerr << "cannot open video: " << argv[2] << "\n";
-            return 1;
+        // ① 從指令讀要開幾路，沒給就是 1 路
+        int num_streams = (argc >= 4) ? std::stoi(argv[3]) : 1;
+
+        auto start = Clock::now();
+
+        // ② 開 N 個 thread
+        std::vector<std::thread> threads;
+        for (int i = 0; i < num_streams; ++i) {
+            threads.emplace_back(process_stream, std::ref(session), std::string(argv[2]), i);
         }
 
-        // 準備輸出影片：跟輸入一樣的 FPS 和大小
-        double fps = cap.get(cv::CAP_PROP_FPS);
-        int w = (int)cap.get(cv::CAP_PROP_FRAME_WIDTH);
-        int h = (int)cap.get(cv::CAP_PROP_FRAME_HEIGHT);
-        cv::VideoWriter writer("result.avi",
-                            cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
-                            fps, cv::Size(w, h));
-
-        // 逐格處理
-        cv::Mat frame;
-        int frame_count = 0;
-        double total_pre = 0, total_infer = 0, total_post = 0;
-        double total_frame = 0;
-        while (true) {
-            auto f0 = Clock::now();
-
-            cap >> frame;                 // 讀下一格
-            if (frame.empty()) break;     // 讀不到了，影片結束
-
-            Timing t;
-            std::vector<Detection> dets = detect(session, frame, t);
-            total_pre += t.pre_ms;
-            total_infer += t.infer_ms;
-            total_post += t.post_ms;
-
-            draw_detections(frame, dets);
-            writer.write(frame);          // 寫進輸出影片
-
-            auto f1 = Clock::now();
-            total_frame += ms_between(f0, f1);
-
-            frame_count++;
+        // ③ 等所有 thread 做完
+        for (std::thread& t : threads) {
+            t.join();
         }
-        std::cout << "processed " << frame_count << " frames\n";
-        std::cout << "avg preprocess : " << total_pre   / frame_count << " ms\n";
-        std::cout << "avg inference  : " << total_infer / frame_count << " ms\n";
-        std::cout << "avg postprocess: " << total_post  / frame_count << " ms\n";
 
-        double avg_frame = total_frame / frame_count;
-        double avg_detect = (total_pre + total_infer + total_post) / frame_count;
-
-        std::cout << "avg per frame  : " << avg_frame << " ms\n";
-        std::cout << "  outside detect: " << avg_frame - avg_detect << " ms\n";   // 讀取 + 畫框 + 寫影片
-        std::cout << "FPS            : " << 1000.0 / avg_frame << "\n";
-
+        auto end = Clock::now();
+        std::cout << "total time: " << ms_between(start, end) / 1000.0 << " s\n";
     } catch (const Ort::Exception& e) {
         std::cerr << "ONNX Runtime error: " << e.what() << "\n";
         return 1;

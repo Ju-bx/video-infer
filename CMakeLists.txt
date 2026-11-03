@@ -18,6 +18,7 @@ target_include_directories(video_infer PRIVATE
 target_link_libraries(video_infer PRIVATE
     ${ORT_DIR}/lib/libonnxruntime.so
     ${OpenCV_LIBS}
+    pthread
 )
 
 set_target_properties(video_infer PROPERTIES BUILD_RPATH ${ORT_DIR}/lib)
