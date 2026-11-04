@@ -13,8 +13,8 @@ std::mutex cout_mutex;
 
 using Clock = std::chrono::steady_clock;
 
-const int INPUT_W = 640;
-const int INPUT_H = 640;
+int INPUT_W;
+int INPUT_H;
 
 double ms_between(Clock::time_point a, Clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
@@ -275,9 +275,13 @@ std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame, Timin
     );
 
     float* out = outputs[0].GetTensorMutableData<float>();
+    auto out_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
     auto t2 = Clock::now();
 
-    std::vector<Detection> dets = decode(out, 8400, 80, 0.25f);
+    int num_boxes   = (int)out_shape[2];
+    int num_classes = (int)out_shape[1] - 4;
+
+    std::vector<Detection> dets = decode(out, num_boxes, num_classes, 0.25f);
     std::vector<Detection>nms_result = nms(dets, 0.7f);
     auto t3 = Clock::now();
 
@@ -418,6 +422,8 @@ int main(int argc, char* argv[]) {
                                 .GetShape();
             std::cout << "input : " << name.get() << " "
                       << shape_to_string(shape) << "\n";
+            INPUT_H = (int)shape[2];
+            INPUT_W = (int)shape[3];
         }
 
         for (size_t i = 0; i < session.GetOutputCount(); ++i) {
@@ -427,6 +433,7 @@ int main(int argc, char* argv[]) {
                                 .GetShape();
             std::cout << "output : " << name.get() << " "
                       << shape_to_string(shape) << "\n";
+
         }
 
         int num_streams   = (argc >= 4) ? std::stoi(argv[3])  : 1;
