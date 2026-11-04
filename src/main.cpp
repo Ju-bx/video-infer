@@ -6,6 +6,8 @@
 #include <opencv2/opencv.hpp>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
+#include <queue>
 
 std::mutex cout_mutex;
 
@@ -35,6 +37,75 @@ struct Timing {
     double post_ms  = 0;   // 後處理
 };
 
+struct Detection {
+    float cx, cy, w, h;
+    float score;
+    int class_id;
+};
+
+struct Frame {
+    cv::Mat image;
+    Clock::time_point capture_time;
+    int index;
+};
+
+class FrameQueue {
+public:
+    FrameQueue(size_t max_size) {
+        max_size_ = max_size;
+    }
+
+    void push(const Frame& f) {
+        {
+            std::lock_guard<std::mutex> lock(m_);
+            if (q_.size() >= max_size_) {
+                q_.pop();
+                dropped_++;
+            }
+            q_.push(f);
+        }
+        cv_.notify_one();
+    }
+
+    bool pop(Frame& out) {
+        std::unique_lock<std::mutex> lock(m_);
+        cv_.wait(lock, [this] { return !q_.empty() || closed_; });
+
+        if (q_.empty()) return false;
+
+        out = q_.front(); 
+        q_.pop();
+        return true;
+    }
+
+    void close() {
+        {
+            std::lock_guard<std::mutex> lock(m_);
+            closed_ = true;
+        }
+        cv_.notify_all();
+    }
+
+    int dropped() {
+        std::lock_guard<std::mutex> lock(m_);
+        return dropped_;
+    }
+
+private:
+    std::queue<Frame> q_;
+    std::mutex m_;                  // 鎖
+    std::condition_variable cv_;    // 叫醒工具
+    size_t max_size_;               // 最多放幾格
+    bool closed_ = false;           // 送完了沒
+    int dropped_ = 0;               // 丟了幾格
+};
+
+struct StreamStats {
+    int captured = 0;          // 攝影機拍了幾格
+    int processed = 0;         // 實際處理了幾格
+    double total_infer = 0;    // 推論時間加總
+    double total_latency = 0;  // 延遲加總
+};
 
 std::vector<float> preprocess(const cv::Mat& bgr) {
     cv::Mat resized;
@@ -73,12 +144,6 @@ std::string shape_to_string(const std::vector<int64_t>& shape) {
     result += "]";
     return result;
 }
-
-struct Detection {
-    float cx, cy, w, h;
-    float score;
-    int class_id;
-};
 
 std::vector<Detection> decode(const float* out, int num_boxes,
                               int num_classes, float conf_thresh) {
@@ -129,7 +194,7 @@ float iou(const Detection& a, const Detection& b) {
     float inter = iw * ih;
 
     //  聯集面積 = A 的面積 + B 的面積 − 交集
-    float uni = (ax2 - ax1)*(ay2 - ay1) + (bx2 - bx1)*(by2 - by1) - inter;                    // 空格 F
+    float uni = (ax2 - ax1)*(ay2 - ay1) + (bx2 - bx1)*(by2 - by1) - inter;
 
     if (uni <= 0) return 0.0f;
     return inter / uni;
@@ -142,20 +207,19 @@ std::vector<Detection> nms(std::vector<Detection> dets, float iou_thresh) {
                   return a.score > b.score;
               });
 
-    std::vector<Detection> keep;                      // 留下來的框
-    std::vector<bool> removed(dets.size(), false);    // 記錄每個框有沒有被刪掉
+    std::vector<Detection> keep;                      // 留下來的
+    std::vector<bool> removed(dets.size(), false);    // 記錄每個有沒有被刪掉
 
-    //一個一個看
     for (size_t i = 0; i < dets.size(); ++i) {
         if (removed[i]) continue;
 
-        keep.push_back(dets[i]);                      // 留下第 i 個
+        keep.push_back(dets[i]);
 
         // 把後面跟它重疊太多的刪掉
         for (size_t j = i + 1; j < dets.size(); ++j) {
             if (dets[j].class_id == dets[i].class_id &&
                 iou(dets[i], dets[j]) >= iou_thresh) {//IoU 超過門檻
-                removed[j] = true;//標記第 j 個為已刪除
+                removed[j] = true;
             }
         }
     }
@@ -163,22 +227,22 @@ std::vector<Detection> nms(std::vector<Detection> dets, float iou_thresh) {
 }
 
 void draw_detections(cv::Mat& img, const std::vector<Detection>& dets) {
-    // ① 換算比例：原圖是 640 的幾倍
+    // 換算比例
     float sx = (float)img.cols / INPUT_W;     // 寬的比例
-    float sy = (float)img.rows / INPUT_H;                        // 空格 A：高的比例
+    float sy = (float)img.rows / INPUT_H;     // 高的比例
 
     for (const Detection& d : dets) {
-        // ② 換成左上角、右下角，再乘上比例
+        // 換成左上角、右下角，再乘上比例
         int x1 = (int)((d.cx - d.w / 2) * sx);
         int y1 = (int)((d.cy - d.h / 2) * sy);
         int x2 = (int)((d.cx + d.w / 2) * sx);
         int y2 = (int)((d.cy + d.h / 2) * sy);
 
-        // ③ 畫框
+        // 畫框
         cv::rectangle(img, cv::Point(x1, y1), cv::Point(x2, y2),
                       cv::Scalar(0, 255, 0), 2);
 
-        // ④ 寫上類別和分數，例如 "bus 0.90"
+        // 寫上類別和分數
         std::string label = COCO_NAMES[d.class_id] + " " +
                             std::to_string(d.score).substr(0, 4);
         cv::putText(img, label, cv::Point(x1, std::max(y1 - 5, 15)),
@@ -232,7 +296,7 @@ void process_stream(Ort::Session& session, const std::string& video_path, int st
         return;
     }
 
-    // 準備輸出影片
+    // 輸出影片
     double fps = cap.get(cv::CAP_PROP_FPS);
     int w = (int)cap.get(cv::CAP_PROP_FRAME_WIDTH);
     int h = (int)cap.get(cv::CAP_PROP_FRAME_HEIGHT);
@@ -241,7 +305,7 @@ void process_stream(Ort::Session& session, const std::string& video_path, int st
                            cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                            fps, cv::Size(w, h));
 
-    // 逐格處理 + 計時：跟原本完全一樣
+    // 逐格處理 + 計時
     cv::Mat frame;
     int frame_count = 0;
     double total_pre = 0, total_infer = 0, total_post = 0, total_frame = 0;
@@ -266,7 +330,7 @@ void process_stream(Ort::Session& session, const std::string& video_path, int st
 
     std::lock_guard<std::mutex> lock(cout_mutex);
 
-    // 印統計：每一行前面加上是第幾路
+    //統計：每一行前面加上是第幾路
     double avg_frame = total_frame / frame_count;
     std::cout << "[stream " << stream_id << "] frames: " << frame_count
               << "  infer: " << total_infer / frame_count << " ms"
@@ -274,10 +338,63 @@ void process_stream(Ort::Session& session, const std::string& video_path, int st
               << "  FPS: " << 1000.0 / avg_frame << "\n";
 }
 
+void capture_loop(const std::string& video_path, FrameQueue& queue, int& captured) {
+    cv::VideoCapture cap(video_path);
+    if (!cap.isOpened()) {
+        std::cerr << "cannot open video: " << video_path << "\n";
+        queue.close();
+        return;
+    }
+
+    double fps = cap.get(cv::CAP_PROP_FPS);
+    if (fps <= 0) fps = 10;            // 讀不到 FPS 時
+    auto interval = std::chrono::microseconds((long long)(1000000 / fps));   //兩格之間隔多久
+
+    auto next = Clock::now();
+    cv::Mat img;
+    int idx = 0;
+
+    while (cap.read(img)) {
+        Frame f;
+        f.image = img.clone();
+        f.capture_time = Clock::now();
+        f.index = idx++;
+        queue.push(f);
+
+        next += interval;
+        std::this_thread::sleep_until(next);
+    }
+
+    captured = idx;// 總共拍了幾格
+    queue.close();
+}
+
+void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
+                double fps, StreamStats& stats) {
+    std::string out_name = "result_" + std::to_string(stream_id) + ".avi";
+    cv::VideoWriter writer;                         //建立一個空的 writer
+
+    Frame f;
+    while (queue.pop(f)) {
+        Timing t;
+        std::vector<Detection> dets = detect(session, f.image, t);
+        draw_detections(f.image, dets);
+
+        if (!writer.isOpened()) {
+            writer.open(out_name, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
+                        fps, f.image.size());
+        }
+        writer.write(f.image);
+
+        stats.processed++;
+        stats.total_infer   += t.infer_ms;
+        stats.total_latency += ms_between(f.capture_time, Clock::now());
+    }
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: " << argv[0] << " <model.onnx> <video> [num_streams] [intra_threads]\n";
+        std::cerr << "usage: " << argv[0] << " <model.onnx> <video> [num_streams] [intra_threads] [queue_size]\n";
         return 1;
     }
 
@@ -312,24 +429,52 @@ int main(int argc, char* argv[]) {
                       << shape_to_string(shape) << "\n";
         }
 
-        // ① 從指令讀要開幾路，沒給就是 1 路
-        int num_streams = (argc >= 4) ? std::stoi(argv[3]) : 1;
+        int num_streams   = (argc >= 4) ? std::stoi(argv[3])  : 1;
+        size_t queue_size = (argc >= 6) ? std::stoul(argv[5]) : 3;
 
+        // 讀一次影片的 FPS，給 writer 用
+        cv::VideoCapture probe(argv[2]);
+        double fps = probe.get(cv::CAP_PROP_FPS);
+        probe.release();
+        std::cout << "video FPS: " << fps << "  queue size: " << queue_size << "\n";
+
+        // 每一路一個 FrameQueue、一份統計
+        std::deque<FrameQueue> queues;
+        for (int i = 0; i < num_streams; ++i) {
+            queues.emplace_back(queue_size);
+        }
+        std::vector<StreamStats> stats(num_streams);
+
+        // 每一路開兩個 thread擷取 + 推論
         auto start = Clock::now();
-
-        // ② 開 N 個 thread
         std::vector<std::thread> threads;
         for (int i = 0; i < num_streams; ++i) {
-            threads.emplace_back(process_stream, std::ref(session), std::string(argv[2]), i);
+            threads.emplace_back(capture_loop, std::string(argv[2]),
+                                 std::ref(queues[i]), std::ref(stats[i].captured));
+            threads.emplace_back(infer_loop, std::ref(session),
+                                 std::ref(queues[i]), i, fps, std::ref(stats[i]));
         }
 
-        // ③ 等所有 thread 做完
+        //全部做完
         for (std::thread& t : threads) {
             t.join();
         }
-
         auto end = Clock::now();
-        std::cout << "total time: " << ms_between(start, end) / 1000.0 << " s\n";
+        double total_s = ms_between(start, end) / 1000.0;
+
+        //印出每一路的結果
+        for (int i = 0; i < num_streams; ++i) {
+            const StreamStats& s = stats[i];
+            if (s.processed == 0) continue;
+            std::cout << "[stream " << i << "]"
+                      << "  captured: "    << s.captured
+                      << "  processed: "   << s.processed
+                      << "  dropped: "     << queues[i].dropped()
+                      << "  avg infer: "   << s.total_infer / s.processed   << " ms"
+                      << "  avg latency: " << s.total_latency / s.processed << " ms"
+                      << "  FPS: "         << s.processed / total_s << "\n";
+        }
+        std::cout << "total time: " << total_s << " s\n";
     } catch (const Ort::Exception& e) {
         std::cerr << "ONNX Runtime error: " << e.what() << "\n";
         return 1;
