@@ -20,6 +20,9 @@ int INPUT_W;
 int INPUT_H;
 const int TARGET_CLASS = 0;
 
+const int MAX_MISSES = 3;
+const int MIN_HITS   = 3; 
+
 double ms_between(Clock::time_point a, Clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
 }
@@ -103,18 +106,18 @@ public:
 
 private:
     std::queue<Frame> q_;
-    std::mutex m_;                  // 鎖
-    std::condition_variable cv_;    // 叫醒工具
-    size_t max_size_;               // 最多放幾格
-    bool closed_ = false;           // 送完了沒
-    int dropped_ = 0;               // 丟了幾格
+    std::mutex m_;
+    std::condition_variable cv_;
+    size_t max_size_;
+    bool closed_ = false;
+    int dropped_ = 0;
 };
 
 struct StreamStats {
-    int captured = 0;          // 攝影機拍了幾格
-    int processed = 0;         // 實際處理了幾格
-    double total_infer = 0;    // 推論時間加總
-    double total_latency = 0;  // 延遲加總
+    int captured = 0;
+    int processed = 0;
+    double total_infer = 0;
+    double total_latency = 0;
 };
 
 std::vector<float> preprocess(const cv::Mat& bgr, Letterbox& lb) {
@@ -228,21 +231,20 @@ float iou(const Detection& a, const Detection& b) {
 }
 
 std::vector<Detection> nms(std::vector<Detection> dets, float iou_thresh) {
-    //按分數由高到低排序
+
     std::sort(dets.begin(), dets.end(),
               [](const Detection& a, const Detection& b) {
                   return a.score > b.score;
               });
 
-    std::vector<Detection> keep;                      // 留下來的
-    std::vector<bool> removed(dets.size(), false);    // 記錄每個有沒有被刪掉
+    std::vector<Detection> keep;
+    std::vector<bool> removed(dets.size(), false);
 
     for (size_t i = 0; i < dets.size(); ++i) {
         if (removed[i]) continue;
 
         keep.push_back(dets[i]);
 
-        // 把後面跟它重疊太多的刪掉
         for (size_t j = i + 1; j < dets.size(); ++j) {
             if (dets[j].class_id == dets[i].class_id &&
                 iou(dets[i], dets[j]) >= iou_thresh) {//IoU 超過門檻
@@ -262,15 +264,108 @@ void draw_detections(cv::Mat& img, const std::vector<Detection>& dets) {
         int x2 = (int)(d.cx + d.w / 2);
         int y2 = (int)(d.cy + d.h / 2);
 
-        // 畫框
         cv::rectangle(img, cv::Point(x1, y1), cv::Point(x2, y2),
                       cv::Scalar(0, 255, 0), 2);
 
-        // 寫上類別和分數
         std::string label = COCO_NAMES[d.class_id] + " " +
                             std::to_string(d.score).substr(0, 4);
         cv::putText(img, label, cv::Point(x1, std::max(y1 - 5, 15)),
                     cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+    }
+}
+
+struct Track {
+    int id;
+    Detection box;
+    int hits;
+    int misses;
+    float vx = 0;   // 每格在 x 方向移動多少
+    float vy = 0;   // 每格在 y 方向移動多少
+};
+
+class Tracker {
+public:
+
+    std::vector<Track> update(const std::vector<Detection>& dets) {
+        std::vector<bool> used(dets.size(), false);
+        for (Track& t : tracks_){
+            float prev_cx = t.box.cx;
+            float prev_cy = t.box.cy;
+            t.box.cx += t.vx;
+            t.box.cy += t.vy;
+
+            float best_iou = 0;
+            int best_j = -1;
+            for (size_t j = 0; j < dets.size();j++){
+                
+                if (used[j]) continue;
+                float v = iou(dets[j],t.box);
+                if (v > best_iou){
+                    best_iou = v;
+                    best_j = (int)j;
+                }
+            }
+            if (best_j != -1 && best_iou > 0.2f){
+                t.vx = dets[best_j].cx - prev_cx;
+                t.vy = dets[best_j].cy - prev_cy;
+                t.box = dets[best_j];
+                t.hits++;
+                t.misses = 0;
+                used[best_j] = true;
+            } else {
+                t.misses++;
+            }
+        }
+        for (size_t i = 0; i < used.size(); i++){
+            if (!used[i]){
+                Track nt; 
+                nt.id = next_id_;
+                next_id_++;
+                nt.box = dets[i];
+                nt.hits = 1;
+                nt.misses = 0;
+                tracks_.push_back(nt);
+            }
+        }
+
+        std::vector<Track> alive;
+        for (const Track& t : tracks_) {
+            if (t.misses <= MAX_MISSES) {
+                alive.push_back(t);
+            }
+        }
+        tracks_ = alive;
+        
+
+        std::vector<Track> confirmed;
+        for (const Track& t : tracks_) {
+            if (t.hits >= MIN_HITS) {
+                confirmed.push_back(t);
+            }
+        }
+        return confirmed;
+
+    }
+
+private:
+    std::vector<Track> tracks_;
+    int next_id_ = 0;
+};
+
+void draw_tracks(cv::Mat& img, const std::vector<Track>& tracks) {
+
+    for (const Track& t : tracks) {
+        int x1 = (int)(t.box.cx - t.box.w / 2);
+        int y1 = (int)(t.box.cy - t.box.h / 2);
+        int x2 = (int)(t.box.cx + t.box.w / 2);
+        int y2 = (int)(t.box.cy + t.box.h / 2);
+
+        
+        cv::Scalar color = (t.misses == 0)? cv::Scalar(0, 255, 0):cv::Scalar(0, 255, 255);
+
+        cv::rectangle(img, cv::Point(x1, y1), cv::Point(x2, y2),
+                      color, 2);
+        
     }
 }
 
@@ -358,12 +453,14 @@ void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
                 double fps, StreamStats& stats) {
     std::string out_name = "result_" + std::to_string(stream_id) + ".avi";
     cv::VideoWriter writer;                         //建立一個空的 writer
-
+    
+    Tracker tracker;
     Frame f;
     while (queue.pop(f)) {
         Timing t;
         std::vector<Detection> dets = detect(session, f.image, t);
-        draw_detections(f.image, dets);
+        std::vector<Track> tracks = tracker.update(dets);
+        draw_tracks(f.image, tracks);
 
         if (!writer.isOpened()) {
             writer.open(out_name, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

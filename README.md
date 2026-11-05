@@ -1,36 +1,40 @@
 # video-infer
 
-Real-time, multi-stream object detection in C++17 with ONNX Runtime and OpenCV, built step by step toward edge deployment on a Raspberry Pi.
+Real-time, multi-stream person detection in C++17 with ONNX Runtime and OpenCV, built step by step toward edge deployment on a Raspberry Pi.
 
-The whole inference pipeline — preprocessing, ONNX Runtime inference, YOLO output decoding, IoU / NMS, and drawing — is implemented by hand in C++ and verified step by step against a Python reference.
+The whole pipeline — letterbox preprocessing, ONNX Runtime inference, YOLO output decoding, IoU / NMS, a lightweight tracker, and drawing — is implemented by hand in C++ and was verified stage by stage against a Python reference.
 
-> **Status:** work in progress (v0.3). See [Roadmap](#roadmap).
+**Result:** 4 simultaneous 10 FPS streams processed in real time on 4 CPU cores, with ~0.07% dropped frames and ~57 ms average capture-to-result latency.
 
-<!-- TODO: add a demo GIF of result_0.avi here -->
+![demo](docs/demo.gif)
+
+*Green: detected in this frame. Yellow: position predicted by the tracker while the detector missed the person (e.g. behind the sign or the lamp post).*
 
 ## Features
 
-- **Hand-written YOLO11n pipeline in C++**: HWC→CHW preprocessing, ONNX Runtime C++ API, decoding of the `[1, 84, 8400]` output, IoU and NMS, box drawing
-- **Verified against Python** at every stage (preprocessed tensor, raw model output, decoded boxes)
-- **Video inference** with per-stage timing (preprocess / inference / postprocess)
-- **Multi-stream processing** with `std::thread`, sharing a single ONNX Runtime session
-- **Real-time producer–consumer pipeline**: a capture thread per stream simulates a camera at the video's native FPS; a bounded, thread-safe `FrameQueue` drops the oldest frame when full to keep latency bounded
+- **Hand-written YOLO11n pipeline in C++**: letterbox resize, HWC→CHW, ONNX Runtime C++ API, decoding of the `[1, 84, N]` output, IoU and NMS
+- **Model-agnostic input size**: input resolution and number of candidate boxes are read from the model, so 320 / 416 / 480 / 640 models run without code changes
+- **Person-only detection** for the surveillance use case (reads the person score directly instead of scanning all 80 classes)
+- **Real-time producer–consumer pipeline**: one capture thread per stream simulates a camera at the video's native FPS; a bounded, thread-safe `FrameQueue` drops the oldest frame when full to keep latency bounded
+- **Multi-stream** processing with `std::thread`, sharing a single ONNX Runtime session
+- **IoU tracker with constant-velocity prediction** for temporal smoothing: bridges short detector misses and occlusions, and suppresses one-frame false positives
 - Reports **latency, drop rate and throughput** per stream
 
 ## Architecture
 
 ```
-                 ┌──────────────────── per stream ────────────────────┐
- video / camera  │  capture thread          FrameQueue       inference thread
- ──────────────► │  read at native FPS ──►  [■ ■ ■]  ──►  preprocess → ONNX Runtime
-                 │  timestamp + clone      bounded,       → decode → NMS → draw → write
-                 │                         drop oldest
-                 └─────────────────────────────────────────────────────┘
-                                   shared Ort::Session (thread-safe Run)
+                 ┌──────────────────────────── per stream ────────────────────────────┐
+ video / camera  │  capture thread          FrameQueue          inference thread
+ ──────────────► │  read at native FPS ──►  [■]  ──►  letterbox → ONNX Runtime → decode
+                 │  timestamp + clone       bounded,  → NMS → map to original coords
+                 │                          drop oldest → tracker → draw → write
+                 └─────────────────────────────────────────────────────────────────────┘
+                                     shared Ort::Session (thread-safe Run)
 ```
 
 - `FrameQueue` wraps `std::queue`, `std::mutex` and `std::condition_variable`; `pop()` blocks until a frame arrives or the producer calls `close()`.
-- Latency is measured from the moment a frame is captured to the moment its detections are written.
+- Latency is measured from the moment a frame is captured to the moment its result is written.
+- The tracker matches tracks to detections by IoU after predicting each track forward with a smoothed velocity; a track is shown after 3 hits and dropped after 5 consecutive misses.
 
 ## Build
 
@@ -44,11 +48,11 @@ sudo apt install -y libopencv-dev
 wget https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz
 tar xzf onnxruntime-linux-x64-1.20.1.tgz
 
-# Export the model (Python, one time)
+# Export models (Python, one time; input size must be a multiple of 32)
 python3 -m venv .venv && source .venv/bin/activate
 pip install ultralytics onnx
-yolo export model=yolo11n.pt format=onnx imgsz=640
-mkdir -p models && mv yolo11n.onnx models/
+mkdir -p models
+yolo export model=yolo11n.pt format=onnx imgsz=416 && mv yolo11n.onnx models/yolo11n_416.onnx
 
 # Build
 cmake -S . -B build
@@ -61,7 +65,7 @@ cmake --build build
 ./build/video_infer <model.onnx> <video> [num_streams] [intra_threads] [queue_size]
 
 # 4 streams, 1 ONNX Runtime thread per inference, queue size 1
-./build/video_infer models/yolo11n.onnx videos/vtest.avi 4 1 1
+./build/video_infer models/yolo11n_416.onnx videos/vtest.avi 4 1 1
 ```
 
 | Argument | Default | Meaning |
@@ -72,20 +76,33 @@ cmake --build build
 
 ## Benchmarks
 
-**Environment:** AMD Ryzen 5 5600H (6C/12T) · VirtualBox VM with 4 vCPUs and 8 GB RAM · Ubuntu 24.04 · YOLO11n FP32, 640×640 · OpenCV sample video `vtest.avi` (768×576, 10 FPS, 795 frames).
-Numbers come from single runs inside a VM and vary by roughly ±10–15% between runs.
+**Environment:** AMD Ryzen 5 5600H (6C/12T) · VirtualBox VM with 4 vCPUs and 8 GB RAM · Ubuntu 24.04 · YOLO11n FP32 · OpenCV sample video `vtest.avi` (768×576, 10 FPS, 795 frames).
 
-### Per-frame breakdown (single stream, offline)
+Numbers inside a VM depend heavily on host load. The final result below is the median of 3 runs with other host programs closed; the earlier tables were measured in noisier sessions, so compare trends within a table rather than absolute values across tables.
 
-| Stage | Time | Share |
-|---|---|---|
-| Inference | 61.2 ms | 67% |
-| Preprocess | 16.8 ms | 18% |
-| Read + draw + write | 11.1 ms | 12% |
-| Postprocess (decode + NMS) | 2.1 ms | 2% |
-| **Total** | **91.2 ms** | **≈ 11 FPS** |
+### Final configuration (v1.0)
 
-### Streams × intra-op threads (offline, as fast as possible)
+416×416 input · letterbox · person only · tracker · 4 streams × 1 intra-op thread · queue size 1 · camera simulated at 10 FPS
+
+| Metric | Value (median of 3 runs) |
+|---|---|
+| Inference / frame | 44.5 ms |
+| Capture-to-result latency | 56.9 ms |
+| Processed FPS / stream | ≈ 9.99 (input: 10) |
+| Dropped frames | ≈ 0.07% (2–3 of 3180) |
+
+### Input resolution (4 streams, real-time 10 FPS input)
+
+| Input size | Inference / frame | Drop rate | Avg latency |
+|---|---|---|---|
+| 320 | 28 ms | 0.2% | 40 ms |
+| **416** | **64 ms** | **1%** | **90 ms** |
+| 480 | 104 ms | 24% | 162 ms |
+| 640 | 212 ms | 60% | 293 ms |
+
+Each frame has a 100 ms budget at 10 FPS. Once processing exceeds it (480 and above), the drop rate jumps sharply rather than growing gradually. 416 is the largest input that stays within budget, keeping more detail than 320, where small people flicker in and out. Going from 640 to 320 sped inference up 7.5× — more than the 4× reduction in pixels — because the CPU was no longer saturated and the smaller activations fit better in cache.
+
+### Streams × intra-op threads (640 input, offline, as fast as possible)
 
 | Streams × threads per inference | Total FPS | Inference / frame |
 |---|---|---|
@@ -94,26 +111,35 @@ Numbers come from single runs inside a VM and vary by roughly ±10–15% between
 | 1 × 1 | 8.4 | 96 ms |
 | **4 × 1** | **17.1** | 195 ms |
 
-Running 4 streams with ONNX Runtime's default thread count oversubscribes the 4 vCPUs (≈16 busy threads). Limiting each inference to 1 thread raises total throughput by 21%, but per-stream inference still slows from 96 ms to 195 ms because of shared resources (memory bandwidth, L3 cache, SMT siblings).
+With ONNX Runtime's default thread count, 4 streams oversubscribe the 4 vCPUs (≈16 busy threads). Limiting each inference to 1 thread raises total throughput by 21%, but per-stream inference still slows from 96 to 195 ms because of shared resources (memory bandwidth, L3 cache, SMT siblings).
 
-### Real-time input (camera simulated at 10 FPS, 1 thread per inference)
+### Queue size (640 input, real-time 10 FPS input, 1 thread per inference)
 
-| Streams | Queue size | Processed FPS / stream | Drop rate | Avg latency |
-|---|---|---|---|---|
-| 1 | 3 | 7.3 | 27% | 384 ms |
-| 1 | 1 | 7.5 | 25% | 171 ms |
-| 4 | 3 | 3.6 | 63% | 514 ms |
-| 4 | 1 | 3.7 | 63% | 311 ms |
+| Streams | Queue size | Drop rate | Avg latency |
+|---|---|---|---|
+| 1 | 3 | 27% | 384 ms |
+| 1 | 1 | 25% | 171 ms |
+| 4 | 3 | 63% | 514 ms |
+| 4 | 1 | 63% | 311 ms |
 
-When inference cannot keep up with the camera, the drop rate is set by processing speed, not by queue size. A shorter queue only reduces how long the processed frame waited — latency ≈ queue length × processing time — so queue size 1 cuts latency by more than half at the same drop rate.
+When inference cannot keep up, the drop rate is set by processing speed, not queue size. A shorter queue only reduces how long the processed frame waited (latency ≈ queue length × processing time).
+
+## Known limitations
+
+- **Crowded scenes**: when two people overlap heavily, NMS can treat their boxes as duplicates and keep only one.
+- **Occlusion**: partially hidden people fall below the confidence threshold. The tracker bridges short gaps (up to 5 frames) but not long ones.
+- **No identity tracking**: the tracker uses position only, so a person passing behind a pole often gets a new track (ID switch). Track IDs are therefore not displayed; the tracker is used for temporal smoothing. Stable identities would need appearance features (e.g. DeepSORT) or a stronger association method (e.g. ByteTrack with a Kalman filter).
+- **Exceptions in worker threads** are not caught and terminate the program.
+- The HWC→CHW preprocessing loop is not yet optimized.
 
 ## Roadmap
 
 - [x] v0.1 — single-image detection in C++, verified against Python
 - [x] v0.2 — video inference with per-stage timing
 - [x] v0.3 — multi-stream threads and real-time producer–consumer pipeline
-- [ ] v1.0 — optimizations (input resolution, faster preprocessing, letterbox, person-only filter, IoU tracker with frame skipping), repeated benchmarks, demo GIF
-- [ ] v2 — deployment on Raspberry Pi 3B+ (ARM, 1 GB RAM)
+- [x] v1.0 — resolution study, letterbox, person-only filter, IoU tracker with velocity prediction
+- [ ] v1.1 — faster preprocessing, exception handling in threads, rectangular model input (e.g. 320×416 for 4:3 video), ByteTrack comparison
+- [ ] v2 — deployment on Raspberry Pi 3B+ (ARM, 1 GB RAM), INT8 quantization
 
 ## Model
 
