@@ -15,6 +15,7 @@ using Clock = std::chrono::steady_clock;
 
 int INPUT_W;
 int INPUT_H;
+const int TARGET_CLASS = 0;
 
 double ms_between(Clock::time_point a, Clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
@@ -150,16 +151,22 @@ std::vector<Detection> decode(const float* out, int num_boxes,
     std::vector<Detection> dets;
 
     for (int i = 0; i < num_boxes; ++i) {
-
         float best_score = 0;
         int best_class = -1;
-        for (int c = 0; c < num_classes; ++c) {
-            float s = out[(4 + c) * num_boxes + i];
-            if (s > best_score) {
-                best_score = s;
-                best_class = c;
+        if (TARGET_CLASS != -1){
+            best_class = TARGET_CLASS;
+            best_score = out[(4 + TARGET_CLASS) * num_boxes + i];
+        }else{
+            for (int c = 0; c < num_classes; ++c) {
+                float s = out[(4 + c) * num_boxes + i];
+                if (s > best_score) {
+                    best_score = s;
+                    best_class = c;
+                }
             }
         }
+
+        
 
         if (best_score < conf_thresh) continue;
 
