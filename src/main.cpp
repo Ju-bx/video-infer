@@ -8,6 +8,9 @@
 #include <mutex>
 #include <condition_variable>
 #include <queue>
+#include <cmath>      // std::round
+#include <deque>      // std::deque
+#include <algorithm>  // std::sort、std::min、std::max
 
 std::mutex cout_mutex;
 
@@ -42,6 +45,12 @@ struct Detection {
     float cx, cy, w, h;
     float score;
     int class_id;
+};
+
+struct Letterbox {
+    float scale;   // 縮放比例
+    int pad_x;
+    int pad_y;
 };
 
 struct Frame {
@@ -108,12 +117,23 @@ struct StreamStats {
     double total_latency = 0;  // 延遲加總
 };
 
-std::vector<float> preprocess(const cv::Mat& bgr) {
+std::vector<float> preprocess(const cv::Mat& bgr, Letterbox& lb) {
+    lb.scale = std::min((float)INPUT_W / bgr.cols, (float)INPUT_H/ bgr.rows);
+
+    int new_w = (int)std::round(bgr.cols * lb.scale);
+    int new_h = (int)std::round(bgr.rows * lb.scale);                                       // 空格 B
+
+    lb.pad_x = (INPUT_W - new_w) / 2;
+    lb.pad_y = (INPUT_H - new_h) / 2;
+
     cv::Mat resized;
-    cv::resize(bgr, resized, cv::Size(INPUT_W, INPUT_H));
+    cv::resize(bgr, resized, cv::Size(new_w, new_h));
+
+    cv::Mat canvas(INPUT_H, INPUT_W, CV_8UC3, cv::Scalar(114, 114, 114));
+    resized.copyTo(canvas(cv::Rect(lb.pad_x, lb.pad_y, new_w, new_h)));
 
     cv::Mat rgb;
-    cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
+    cv::cvtColor(canvas, rgb, cv::COLOR_BGR2RGB);
 
     cv::Mat f32;
     rgb.convertTo(f32, CV_32FC3, 1.0 / 255.0);
@@ -234,16 +254,13 @@ std::vector<Detection> nms(std::vector<Detection> dets, float iou_thresh) {
 }
 
 void draw_detections(cv::Mat& img, const std::vector<Detection>& dets) {
-    // 換算比例
-    float sx = (float)img.cols / INPUT_W;     // 寬的比例
-    float sy = (float)img.rows / INPUT_H;     // 高的比例
 
     for (const Detection& d : dets) {
         // 換成左上角、右下角，再乘上比例
-        int x1 = (int)((d.cx - d.w / 2) * sx);
-        int y1 = (int)((d.cy - d.h / 2) * sy);
-        int x2 = (int)((d.cx + d.w / 2) * sx);
-        int y2 = (int)((d.cy + d.h / 2) * sy);
+        int x1 = (int)(d.cx - d.w / 2);
+        int y1 = (int)(d.cy - d.h / 2);
+        int x2 = (int)(d.cx + d.w / 2);
+        int y2 = (int)(d.cy + d.h / 2);
 
         // 畫框
         cv::rectangle(img, cv::Point(x1, y1), cv::Point(x2, y2),
@@ -259,7 +276,8 @@ void draw_detections(cv::Mat& img, const std::vector<Detection>& dets) {
 
 std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame, Timing& t){
     auto t0 = Clock::now();
-    std::vector<float> input = preprocess(frame);
+    Letterbox lb;
+    std::vector<float> input = preprocess(frame, lb);
     auto t1 = Clock::now();
 
     Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -290,6 +308,12 @@ std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame, Timin
 
     std::vector<Detection> dets = decode(out, num_boxes, num_classes, 0.25f);
     std::vector<Detection>nms_result = nms(dets, 0.7f);
+    for (Detection& d : nms_result) {
+        d.cx = (d.cx - lb.pad_x) / lb.scale;
+        d.cy = (d.cy - lb.pad_y) / lb.scale;
+        d.w  = d.w / lb.scale;
+        d.h  = d.h / lb.scale;
+    }
     auto t3 = Clock::now();
 
     t.pre_ms   = ms_between(t0, t1);
@@ -297,56 +321,6 @@ std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame, Timin
     t.post_ms  = ms_between(t2, t3);
 
     return nms_result;
-}
-
-void process_stream(Ort::Session& session, const std::string& video_path, int stream_id) {
-    // 打開影片
-    cv::VideoCapture cap(video_path);
-    if (!cap.isOpened()) {
-        std::cerr << "cannot open video: " << video_path << "\n";
-        return;
-    }
-
-    // 輸出影片
-    double fps = cap.get(cv::CAP_PROP_FPS);
-    int w = (int)cap.get(cv::CAP_PROP_FRAME_WIDTH);
-    int h = (int)cap.get(cv::CAP_PROP_FRAME_HEIGHT);
-    std::string out_name = "result_" + std::to_string(stream_id) + ".avi";
-    cv::VideoWriter writer(out_name,
-                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
-                           fps, cv::Size(w, h));
-
-    // 逐格處理 + 計時
-    cv::Mat frame;
-    int frame_count = 0;
-    double total_pre = 0, total_infer = 0, total_post = 0, total_frame = 0;
-    while (true) {
-        auto f0 = Clock::now();
-        cap >> frame;
-        if (frame.empty()) break;
-
-        Timing t;
-        std::vector<Detection> dets = detect(session, frame, t);
-        total_pre   += t.pre_ms;
-        total_infer += t.infer_ms;
-        total_post  += t.post_ms;
-
-        draw_detections(frame, dets);
-        writer.write(frame);
-
-        auto f1 = Clock::now();
-        total_frame += ms_between(f0, f1);
-        frame_count++;
-    }
-
-    std::lock_guard<std::mutex> lock(cout_mutex);
-
-    //統計：每一行前面加上是第幾路
-    double avg_frame = total_frame / frame_count;
-    std::cout << "[stream " << stream_id << "] frames: " << frame_count
-              << "  infer: " << total_infer / frame_count << " ms"
-              << "  per frame: " << avg_frame << " ms"
-              << "  FPS: " << 1000.0 / avg_frame << "\n";
 }
 
 void capture_loop(const std::string& video_path, FrameQueue& queue, int& captured) {
