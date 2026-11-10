@@ -4,7 +4,13 @@ project(video_infer CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(ORT_DIR ${CMAKE_SOURCE_DIR}/onnxruntime-linux-x64-1.20.1)
+if(NOT ORT_DIR)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+        set(ORT_DIR $ENV{HOME}/video-infer-deps/onnxruntime-linux-aarch64-1.20.1)
+    else()
+        set(ORT_DIR ${CMAKE_SOURCE_DIR}/onnxruntime-linux-x64-1.20.1)
+    endif()
+endif()
 
 find_package(OpenCV REQUIRED)
 
