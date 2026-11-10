@@ -419,33 +419,36 @@ std::vector<Detection> detect(Ort::Session& session, const cv::Mat& frame, Timin
 }
 
 void capture_loop(const std::string& video_path, FrameQueue& queue, int& captured) {
-    cv::VideoCapture cap(video_path);
-    if (!cap.isOpened()) {
-        std::cerr << "cannot open video: " << video_path << "\n";
-        queue.close();
-        return;
-    }
-
-    double fps = cap.get(cv::CAP_PROP_FPS);
-    if (fps <= 0) fps = 10;            // 讀不到 FPS 時
-    auto interval = std::chrono::microseconds((long long)(1000000 / fps));   //兩格之間隔多久
-
-    auto next = Clock::now();
-    cv::Mat img;
     int idx = 0;
 
-    while (cap.read(img)) {
-        Frame f;
-        f.image = img.clone();
-        f.capture_time = Clock::now();
-        f.index = idx++;
-        queue.push(f);
+    try {
+        cv::VideoCapture cap(video_path);
+        if (!cap.isOpened()) {
+            throw std::runtime_error("cannot open video: " + video_path);   // ② 改成丟出錯誤
+        }
 
-        next += interval;
-        std::this_thread::sleep_until(next);
+        double fps = cap.get(cv::CAP_PROP_FPS);
+        if (fps <= 0) fps = 10;
+        auto interval = std::chrono::microseconds((long long)(1000000 / fps));
+
+        auto next = Clock::now();
+        cv::Mat img;
+        while (cap.read(img)) {
+            Frame f;
+            f.image = img.clone();
+            f.capture_time = Clock::now();
+            f.index = idx++;
+            queue.push(f);
+
+            next += interval;
+            std::this_thread::sleep_until(next);
+        }
+    } catch (const std::exception& e) {
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "capture error: " << e.what() << "\n";
     }
 
-    captured = idx;// 總共拍了幾格
+    captured = idx;
     queue.close();
 }
 
@@ -455,22 +458,28 @@ void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
     cv::VideoWriter writer;                         //建立一個空的 writer
     
     Tracker tracker;
-    Frame f;
-    while (queue.pop(f)) {
-        Timing t;
-        std::vector<Detection> dets = detect(session, f.image, t);
-        std::vector<Track> tracks = tracker.update(dets);
-        draw_tracks(f.image, tracks);
+    try {
+        Frame f;
+        while (queue.pop(f)) {
 
-        if (!writer.isOpened()) {
-            writer.open(out_name, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
-                        fps, f.image.size());
+            Timing t;
+            std::vector<Detection> dets = detect(session, f.image, t);
+            std::vector<Track> tracks = tracker.update(dets);
+            draw_tracks(f.image, tracks);
+
+            if (!writer.isOpened()) {
+                writer.open(out_name, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
+                            fps, f.image.size());
+            }
+            writer.write(f.image);
+
+            stats.processed++;
+            stats.total_infer   += t.infer_ms;
+            stats.total_latency += ms_between(f.capture_time, Clock::now());
         }
-        writer.write(f.image);
-
-        stats.processed++;
-        stats.total_infer   += t.infer_ms;
-        stats.total_latency += ms_between(f.capture_time, Clock::now());
+    } catch (const std::exception& e) {
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cerr << "[stream " << stream_id << "] inference error: " << e.what() << "\n";
     }
 }
 
