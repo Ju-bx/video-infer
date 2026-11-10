@@ -8,7 +8,13 @@ set(ORT_DIR ${CMAKE_SOURCE_DIR}/onnxruntime-linux-x64-1.20.1)
 
 find_package(OpenCV REQUIRED)
 
-add_executable(video_infer src/main.cpp)
+add_executable(video_infer
+    src/main.cpp
+    src/detector.cpp
+    src/tracker.cpp
+    src/draw.cpp
+    src/pipeline.cpp
+)
 
 target_include_directories(video_infer PRIVATE
     ${ORT_DIR}/include
@@ -22,3 +28,4 @@ target_link_libraries(video_infer PRIVATE
 )
 
 set_target_properties(video_infer PROPERTIES BUILD_RPATH ${ORT_DIR}/lib)
+

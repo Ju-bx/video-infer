@@ -83,14 +83,78 @@ CMakeFiles/video_infer.dir/src/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/video_infer.dir/src/main.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ju/Desktop/video-infer/src/main.cpp -o CMakeFiles/video_infer.dir/src/main.cpp.s
 
+CMakeFiles/video_infer.dir/src/detector.cpp.o: CMakeFiles/video_infer.dir/flags.make
+CMakeFiles/video_infer.dir/src/detector.cpp.o: /home/ju/Desktop/video-infer/src/detector.cpp
+CMakeFiles/video_infer.dir/src/detector.cpp.o: CMakeFiles/video_infer.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ju/Desktop/video-infer/build-release/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/video_infer.dir/src/detector.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/video_infer.dir/src/detector.cpp.o -MF CMakeFiles/video_infer.dir/src/detector.cpp.o.d -o CMakeFiles/video_infer.dir/src/detector.cpp.o -c /home/ju/Desktop/video-infer/src/detector.cpp
+
+CMakeFiles/video_infer.dir/src/detector.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/video_infer.dir/src/detector.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ju/Desktop/video-infer/src/detector.cpp > CMakeFiles/video_infer.dir/src/detector.cpp.i
+
+CMakeFiles/video_infer.dir/src/detector.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/video_infer.dir/src/detector.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ju/Desktop/video-infer/src/detector.cpp -o CMakeFiles/video_infer.dir/src/detector.cpp.s
+
+CMakeFiles/video_infer.dir/src/tracker.cpp.o: CMakeFiles/video_infer.dir/flags.make
+CMakeFiles/video_infer.dir/src/tracker.cpp.o: /home/ju/Desktop/video-infer/src/tracker.cpp
+CMakeFiles/video_infer.dir/src/tracker.cpp.o: CMakeFiles/video_infer.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ju/Desktop/video-infer/build-release/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/video_infer.dir/src/tracker.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/video_infer.dir/src/tracker.cpp.o -MF CMakeFiles/video_infer.dir/src/tracker.cpp.o.d -o CMakeFiles/video_infer.dir/src/tracker.cpp.o -c /home/ju/Desktop/video-infer/src/tracker.cpp
+
+CMakeFiles/video_infer.dir/src/tracker.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/video_infer.dir/src/tracker.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ju/Desktop/video-infer/src/tracker.cpp > CMakeFiles/video_infer.dir/src/tracker.cpp.i
+
+CMakeFiles/video_infer.dir/src/tracker.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/video_infer.dir/src/tracker.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ju/Desktop/video-infer/src/tracker.cpp -o CMakeFiles/video_infer.dir/src/tracker.cpp.s
+
+CMakeFiles/video_infer.dir/src/draw.cpp.o: CMakeFiles/video_infer.dir/flags.make
+CMakeFiles/video_infer.dir/src/draw.cpp.o: /home/ju/Desktop/video-infer/src/draw.cpp
+CMakeFiles/video_infer.dir/src/draw.cpp.o: CMakeFiles/video_infer.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ju/Desktop/video-infer/build-release/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/video_infer.dir/src/draw.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/video_infer.dir/src/draw.cpp.o -MF CMakeFiles/video_infer.dir/src/draw.cpp.o.d -o CMakeFiles/video_infer.dir/src/draw.cpp.o -c /home/ju/Desktop/video-infer/src/draw.cpp
+
+CMakeFiles/video_infer.dir/src/draw.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/video_infer.dir/src/draw.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ju/Desktop/video-infer/src/draw.cpp > CMakeFiles/video_infer.dir/src/draw.cpp.i
+
+CMakeFiles/video_infer.dir/src/draw.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/video_infer.dir/src/draw.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ju/Desktop/video-infer/src/draw.cpp -o CMakeFiles/video_infer.dir/src/draw.cpp.s
+
+CMakeFiles/video_infer.dir/src/pipeline.cpp.o: CMakeFiles/video_infer.dir/flags.make
+CMakeFiles/video_infer.dir/src/pipeline.cpp.o: /home/ju/Desktop/video-infer/src/pipeline.cpp
+CMakeFiles/video_infer.dir/src/pipeline.cpp.o: CMakeFiles/video_infer.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ju/Desktop/video-infer/build-release/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/video_infer.dir/src/pipeline.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/video_infer.dir/src/pipeline.cpp.o -MF CMakeFiles/video_infer.dir/src/pipeline.cpp.o.d -o CMakeFiles/video_infer.dir/src/pipeline.cpp.o -c /home/ju/Desktop/video-infer/src/pipeline.cpp
+
+CMakeFiles/video_infer.dir/src/pipeline.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/video_infer.dir/src/pipeline.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ju/Desktop/video-infer/src/pipeline.cpp > CMakeFiles/video_infer.dir/src/pipeline.cpp.i
+
+CMakeFiles/video_infer.dir/src/pipeline.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/video_infer.dir/src/pipeline.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ju/Desktop/video-infer/src/pipeline.cpp -o CMakeFiles/video_infer.dir/src/pipeline.cpp.s
+
 # Object files for target video_infer
 video_infer_OBJECTS = \
-"CMakeFiles/video_infer.dir/src/main.cpp.o"
+"CMakeFiles/video_infer.dir/src/main.cpp.o" \
+"CMakeFiles/video_infer.dir/src/detector.cpp.o" \
+"CMakeFiles/video_infer.dir/src/tracker.cpp.o" \
+"CMakeFiles/video_infer.dir/src/draw.cpp.o" \
+"CMakeFiles/video_infer.dir/src/pipeline.cpp.o"
 
 # External object files for target video_infer
 video_infer_EXTERNAL_OBJECTS =
 
 video_infer: CMakeFiles/video_infer.dir/src/main.cpp.o
+video_infer: CMakeFiles/video_infer.dir/src/detector.cpp.o
+video_infer: CMakeFiles/video_infer.dir/src/tracker.cpp.o
+video_infer: CMakeFiles/video_infer.dir/src/draw.cpp.o
+video_infer: CMakeFiles/video_infer.dir/src/pipeline.cpp.o
 video_infer: CMakeFiles/video_infer.dir/build.make
 video_infer: /home/ju/Desktop/video-infer/onnxruntime-linux-x64-1.20.1/lib/libonnxruntime.so
 video_infer: /usr/lib/x86_64-linux-gnu/libopencv_stitching.so.4.6.0
@@ -149,7 +213,7 @@ video_infer: /usr/lib/x86_64-linux-gnu/libopencv_photo.so.4.6.0
 video_infer: /usr/lib/x86_64-linux-gnu/libopencv_imgproc.so.4.6.0
 video_infer: /usr/lib/x86_64-linux-gnu/libopencv_core.so.4.6.0
 video_infer: CMakeFiles/video_infer.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ju/Desktop/video-infer/build-release/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable video_infer"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ju/Desktop/video-infer/build-release/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking CXX executable video_infer"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/video_infer.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

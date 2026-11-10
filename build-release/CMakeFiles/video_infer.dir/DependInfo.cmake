@@ -8,7 +8,11 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/home/ju/Desktop/video-infer/src/detector.cpp" "CMakeFiles/video_infer.dir/src/detector.cpp.o" "gcc" "CMakeFiles/video_infer.dir/src/detector.cpp.o.d"
+  "/home/ju/Desktop/video-infer/src/draw.cpp" "CMakeFiles/video_infer.dir/src/draw.cpp.o" "gcc" "CMakeFiles/video_infer.dir/src/draw.cpp.o.d"
   "/home/ju/Desktop/video-infer/src/main.cpp" "CMakeFiles/video_infer.dir/src/main.cpp.o" "gcc" "CMakeFiles/video_infer.dir/src/main.cpp.o.d"
+  "/home/ju/Desktop/video-infer/src/pipeline.cpp" "CMakeFiles/video_infer.dir/src/pipeline.cpp.o" "gcc" "CMakeFiles/video_infer.dir/src/pipeline.cpp.o.d"
+  "/home/ju/Desktop/video-infer/src/tracker.cpp" "CMakeFiles/video_infer.dir/src/tracker.cpp.o" "gcc" "CMakeFiles/video_infer.dir/src/tracker.cpp.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

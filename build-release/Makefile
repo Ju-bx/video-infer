@@ -129,6 +129,54 @@ video_infer/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/build
 .PHONY : video_infer/fast
 
+src/detector.o: src/detector.cpp.o
+.PHONY : src/detector.o
+
+# target to build an object file
+src/detector.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/detector.cpp.o
+.PHONY : src/detector.cpp.o
+
+src/detector.i: src/detector.cpp.i
+.PHONY : src/detector.i
+
+# target to preprocess a source file
+src/detector.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/detector.cpp.i
+.PHONY : src/detector.cpp.i
+
+src/detector.s: src/detector.cpp.s
+.PHONY : src/detector.s
+
+# target to generate assembly for a file
+src/detector.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/detector.cpp.s
+.PHONY : src/detector.cpp.s
+
+src/draw.o: src/draw.cpp.o
+.PHONY : src/draw.o
+
+# target to build an object file
+src/draw.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/draw.cpp.o
+.PHONY : src/draw.cpp.o
+
+src/draw.i: src/draw.cpp.i
+.PHONY : src/draw.i
+
+# target to preprocess a source file
+src/draw.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/draw.cpp.i
+.PHONY : src/draw.cpp.i
+
+src/draw.s: src/draw.cpp.s
+.PHONY : src/draw.s
+
+# target to generate assembly for a file
+src/draw.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/draw.cpp.s
+.PHONY : src/draw.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -153,6 +201,54 @@ src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
 
+src/pipeline.o: src/pipeline.cpp.o
+.PHONY : src/pipeline.o
+
+# target to build an object file
+src/pipeline.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/pipeline.cpp.o
+.PHONY : src/pipeline.cpp.o
+
+src/pipeline.i: src/pipeline.cpp.i
+.PHONY : src/pipeline.i
+
+# target to preprocess a source file
+src/pipeline.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/pipeline.cpp.i
+.PHONY : src/pipeline.cpp.i
+
+src/pipeline.s: src/pipeline.cpp.s
+.PHONY : src/pipeline.s
+
+# target to generate assembly for a file
+src/pipeline.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/pipeline.cpp.s
+.PHONY : src/pipeline.cpp.s
+
+src/tracker.o: src/tracker.cpp.o
+.PHONY : src/tracker.o
+
+# target to build an object file
+src/tracker.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/tracker.cpp.o
+.PHONY : src/tracker.cpp.o
+
+src/tracker.i: src/tracker.cpp.i
+.PHONY : src/tracker.i
+
+# target to preprocess a source file
+src/tracker.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/tracker.cpp.i
+.PHONY : src/tracker.cpp.i
+
+src/tracker.s: src/tracker.cpp.s
+.PHONY : src/tracker.s
+
+# target to generate assembly for a file
+src/tracker.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/video_infer.dir/build.make CMakeFiles/video_infer.dir/src/tracker.cpp.s
+.PHONY : src/tracker.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -162,9 +258,21 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... video_infer"
+	@echo "... src/detector.o"
+	@echo "... src/detector.i"
+	@echo "... src/detector.s"
+	@echo "... src/draw.o"
+	@echo "... src/draw.i"
+	@echo "... src/draw.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/pipeline.o"
+	@echo "... src/pipeline.i"
+	@echo "... src/pipeline.s"
+	@echo "... src/tracker.o"
+	@echo "... src/tracker.i"
+	@echo "... src/tracker.s"
 .PHONY : help
 
 
