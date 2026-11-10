@@ -37,6 +37,7 @@ void draw_detections(cv::Mat& img, const std::vector<Detection>& dets) {
 void draw_tracks(cv::Mat& img, const std::vector<Track>& tracks) {
 
     for (const Track& t : tracks) {
+        if (t.misses > 0) continue;
         int x1 = (int)(t.box.cx - t.box.w / 2);
         int y1 = (int)(t.box.cy - t.box.h / 2);
         int x2 = (int)(t.box.cx + t.box.w / 2);

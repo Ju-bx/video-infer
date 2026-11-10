@@ -56,6 +56,7 @@ int main(int argc, char* argv[]) {
 
         int num_streams   = (argc >= 4) ? std::stoi(argv[3])  : 1;
         size_t queue_size = (argc >= 6) ? std::stoul(argv[5]) : 3;
+        int detect_every  = (argc >= 7) ? std::stoi(argv[6])  : 1;
 
         // 讀一次影片的 FPS，給 writer 用
         cv::VideoCapture probe(argv[2]);
@@ -81,7 +82,7 @@ int main(int argc, char* argv[]) {
             threads.emplace_back(capture_loop, std::string(argv[2]),
                                  std::ref(queues[i]), std::ref(stats[i].captured));
             threads.emplace_back(infer_loop, std::ref(session),
-                                 std::ref(queues[i]), i, fps, std::ref(stats[i]));
+                     std::ref(queues[i]), i, fps, detect_every, std::ref(stats[i]));
         }
 
         //全部做完
@@ -99,9 +100,9 @@ int main(int argc, char* argv[]) {
                       << "  captured: "    << s.captured
                       << "  processed: "   << s.processed
                       << "  dropped: "     << queues[i].dropped()
-                      << "  avg infer: "   << s.total_infer / s.processed   << " ms"
+                      << "  avg infer: "   << s.total_infer / s.detected   << " ms"
                       << "  avg latency: " << s.total_latency / s.processed << " ms"
-                      << "  avg pre: " << s.total_pre / s.processed << " ms"
+                      << "  avg pre: " << s.total_pre / s.detected << " ms"
                       << "  FPS: "         << s.processed / total_s << "\n";
                       
         }

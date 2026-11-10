@@ -47,19 +47,26 @@ void capture_loop(const std::string& video_path, FrameQueue& queue, int& capture
 }
 
 void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
-                double fps, StreamStats& stats) {
+                double fps, int detect_every, StreamStats& stats) {
     std::string out_name = "result_" + std::to_string(stream_id) + ".avi";
-    cv::VideoWriter writer;                         //建立一個空的 writer
-    
+    cv::VideoWriter writer;
     Tracker tracker;
+    std::vector<Track> last_tracks;
+    int frame_idx = 0;
+
     try {
         Frame f;
         while (queue.pop(f)) {
-
-            Timing t;
-            std::vector<Detection> dets = detect(session, f.image, t);
-            std::vector<Track> tracks = tracker.update(dets);
-            draw_tracks(f.image, tracks);
+            if (frame_idx % detect_every == 0) {
+                Timing t;
+                std::vector<Detection> dets = detect(session, f.image, t);
+                last_tracks = tracker.update(dets);
+                stats.detected++;
+                stats.total_infer += t.infer_ms;
+                stats.total_pre   += t.pre_ms;
+            }
+            draw_tracks(f.image, last_tracks);
+            frame_idx++;
 
             if (!writer.isOpened()) {
                 writer.open(out_name, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
@@ -68,9 +75,7 @@ void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
             writer.write(f.image);
 
             stats.processed++;
-            stats.total_infer   += t.infer_ms;
             stats.total_latency += ms_between(f.capture_time, Clock::now());
-            stats.total_pre += t.pre_ms;
         }
     } catch (const std::exception& e) {
         std::lock_guard<std::mutex> lock(cout_mutex);
