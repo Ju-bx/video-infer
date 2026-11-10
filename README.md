@@ -19,6 +19,20 @@ The whole pipeline — letterbox preprocessing, ONNX Runtime inference, YOLO out
 - **Multi-stream** processing with `std::thread`, sharing a single ONNX Runtime session
 - **IoU tracker with constant-velocity prediction** for temporal smoothing: bridges short detector misses and occlusions, and suppresses one-frame false positives
 - Reports **latency, drop rate and throughput** per stream
+- **Fault isolation**: exceptions are caught inside each worker thread, so one failing stream does not take down the others
+
+## Project structure
+
+```
+src/
+├── common.hpp         shared types (Detection, Frame, Timing, Letterbox), clock helpers, constants
+├── frame_queue.hpp    bounded thread-safe queue (mutex + condition_variable)
+├── detector.hpp/.cpp  letterbox preprocessing, ONNX Runtime inference, decode, IoU, NMS
+├── tracker.hpp/.cpp   IoU tracker with constant-velocity prediction
+├── draw.hpp/.cpp      drawing detections and tracks
+├── pipeline.hpp/.cpp  capture thread (producer) and inference thread (consumer)
+└── main.cpp           argument parsing, session setup, thread launch, report
+```
 
 ## Architecture
 
@@ -54,10 +68,12 @@ pip install ultralytics onnx
 mkdir -p models
 yolo export model=yolo11n.pt format=onnx imgsz=416 && mv yolo11n.onnx models/yolo11n_416.onnx
 
-# Build
+# Build (defaults to Release, i.e. -O3)
 cmake -S . -B build
 cmake --build build
 ```
+
+The build type defaults to `Release`. Building without optimization makes the hand-written preprocessing about 2.3× slower (4.5 ms → 2.0 ms per frame at 416×416); ONNX Runtime itself is a prebuilt, optimized library and is unaffected.
 
 ## Usage
 
@@ -78,7 +94,7 @@ cmake --build build
 
 **Environment:** AMD Ryzen 5 5600H (6C/12T) · VirtualBox VM with 4 vCPUs and 8 GB RAM · Ubuntu 24.04 · YOLO11n FP32 · OpenCV sample video `vtest.avi` (768×576, 10 FPS, 795 frames).
 
-Numbers inside a VM depend heavily on host load. The final result below is the median of 3 runs with other host programs closed; the earlier tables were measured in noisier sessions, so compare trends within a table rather than absolute values across tables.
+Numbers inside a VM depend heavily on host load. The final result below is the median of 3 runs with other host programs closed; the earlier tables were measured in noisier sessions and with an unoptimized build (which affects preprocessing and postprocessing, not ONNX Runtime inference), so compare trends within a table rather than absolute values across tables.
 
 ### Final configuration (v1.0)
 
@@ -129,8 +145,8 @@ When inference cannot keep up, the drop rate is set by processing speed, not que
 - **Crowded scenes**: when two people overlap heavily, NMS can treat their boxes as duplicates and keep only one.
 - **Occlusion**: partially hidden people fall below the confidence threshold. The tracker bridges short gaps (up to 5 frames) but not long ones.
 - **No identity tracking**: the tracker uses position only, so a person passing behind a pole often gets a new track (ID switch). Track IDs are therefore not displayed; the tracker is used for temporal smoothing. Stable identities would need appearance features (e.g. DeepSORT) or a stronger association method (e.g. ByteTrack with a Kalman filter).
-- **Exceptions in worker threads** are not caught and terminate the program.
-- The HWC→CHW preprocessing loop is not yet optimized.
+- When a stream's inference thread fails, its capture thread keeps decoding until the video ends; a stop signal from consumer to producer would avoid the wasted work.
+- Preprocessing (~2 ms per frame at 416×416 in a Release build) is about 5% of the frame time, so it was left as a straightforward loop rather than optimized further.
 
 ## Roadmap
 
@@ -138,7 +154,8 @@ When inference cannot keep up, the drop rate is set by processing speed, not que
 - [x] v0.2 — video inference with per-stage timing
 - [x] v0.3 — multi-stream threads and real-time producer–consumer pipeline
 - [x] v1.0 — resolution study, letterbox, person-only filter, IoU tracker with velocity prediction
-- [ ] v1.1 — faster preprocessing, exception handling in threads, rectangular model input (e.g. 320×416 for 4:3 video), ByteTrack comparison
+- [x] v1.1 — split into modules, exception handling in worker threads, Release build by default
+- [ ] v1.2 (optional) — rectangular model input (e.g. 320×416 for 4:3 video), ByteTrack comparison
 - [ ] v2 — deployment on Raspberry Pi 3B+ (ARM, 1 GB RAM), INT8 quantization
 
 ## Model
