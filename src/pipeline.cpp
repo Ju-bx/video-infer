@@ -47,7 +47,7 @@ void capture_loop(const std::string& video_path, FrameQueue& queue, int& capture
 }
 
 void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
-                double fps, int detect_every, StreamStats& stats) {
+                double fps, int detect_every, StreamStats& stats , bool write_video) {
     std::string out_name = "result_" + std::to_string(stream_id) + ".avi";
     cv::VideoWriter writer;
     Tracker tracker;
@@ -65,13 +65,15 @@ void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
                 stats.total_infer += t.infer_ms;
                 stats.total_pre   += t.pre_ms;
             }
-            draw_tracks(f.image, last_tracks);
-            frame_idx++;
 
-            if (!writer.isOpened()) {
-                writer.open(out_name, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
-                            fps, f.image.size());
+            frame_idx++;
+            if (write_video) {
+                draw_tracks(f.image, last_tracks);
+                if (!writer.isOpened())
+                    writer.open(out_name, cv::VideoWriter::fourcc('M','J','P','G'), fps, f.image.size());
+                writer.write(f.image);
             }
+
             writer.write(f.image);
 
             stats.processed++;

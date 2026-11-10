@@ -57,6 +57,7 @@ int main(int argc, char* argv[]) {
         int num_streams   = (argc >= 4) ? std::stoi(argv[3])  : 1;
         size_t queue_size = (argc >= 6) ? std::stoul(argv[5]) : 3;
         int detect_every  = (argc >= 7) ? std::stoi(argv[6])  : 1;
+        bool write_video = (argc > 7) ? std::stoi(argv[7]) != 0 : true;
 
         // 讀一次影片的 FPS，給 writer 用
         cv::VideoCapture probe(argv[2]);
@@ -82,7 +83,7 @@ int main(int argc, char* argv[]) {
             threads.emplace_back(capture_loop, std::string(argv[2]),
                                  std::ref(queues[i]), std::ref(stats[i].captured));
             threads.emplace_back(infer_loop, std::ref(session),
-                     std::ref(queues[i]), i, fps, detect_every, std::ref(stats[i]));
+                     std::ref(queues[i]), i, fps, detect_every, std::ref(stats[i]), write_video);
         }
 
         //全部做完

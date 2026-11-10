@@ -17,4 +17,4 @@ struct StreamStats {
 void capture_loop(const std::string& video_path, FrameQueue& queue, int& captured);
 
 void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
-                double fps, int detect_every, StreamStats& stats);
+                double fps, int detect_every, StreamStats& stats, bool write_video);
