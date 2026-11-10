@@ -118,6 +118,7 @@ struct StreamStats {
     int processed = 0;
     double total_infer = 0;
     double total_latency = 0;
+    double total_pre = 0;
 };
 
 std::vector<float> preprocess(const cv::Mat& bgr, Letterbox& lb) {
@@ -476,6 +477,7 @@ void infer_loop(Ort::Session& session, FrameQueue& queue, int stream_id,
             stats.processed++;
             stats.total_infer   += t.infer_ms;
             stats.total_latency += ms_between(f.capture_time, Clock::now());
+            stats.total_pre += t.pre_ms;
         }
     } catch (const std::exception& e) {
         std::lock_guard<std::mutex> lock(cout_mutex);
@@ -566,7 +568,9 @@ int main(int argc, char* argv[]) {
                       << "  dropped: "     << queues[i].dropped()
                       << "  avg infer: "   << s.total_infer / s.processed   << " ms"
                       << "  avg latency: " << s.total_latency / s.processed << " ms"
+                      << "  avg pre: " << s.total_pre / s.processed << " ms"
                       << "  FPS: "         << s.processed / total_s << "\n";
+                      
         }
         std::cout << "total time: " << total_s << " s\n";
     } catch (const Ort::Exception& e) {
