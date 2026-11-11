@@ -16,7 +16,7 @@ int INPUT_H = 0;
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: " << argv[0] << " <model.onnx> <video> [num_streams] [intra_threads] [queue_size]\n";
+        std::cerr << "usage: " << argv[0] << " <model.onnx> <video> [num_streams] [intra_threads] [queue_size] [detect_every] [write_video]\n";
         return 1;
     }
 

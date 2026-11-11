@@ -6,7 +6,7 @@ std::vector<float> preprocess(const cv::Mat& bgr, Letterbox& lb) {
     lb.scale = std::min((float)INPUT_W / bgr.cols, (float)INPUT_H/ bgr.rows);
 
     int new_w = (int)std::round(bgr.cols * lb.scale);
-    int new_h = (int)std::round(bgr.rows * lb.scale);                                       // 空格 B
+    int new_h = (int)std::round(bgr.rows * lb.scale);
 
     lb.pad_x = (INPUT_W - new_w) / 2;
     lb.pad_y = (INPUT_H - new_h) / 2;

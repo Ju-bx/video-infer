@@ -1,3 +1,0 @@
-/home/ju/Desktop/video-infer/build-release/CMakeFiles/video_infer.dir
-/home/ju/Desktop/video-infer/build-release/CMakeFiles/edit_cache.dir
-/home/ju/Desktop/video-infer/build-release/CMakeFiles/rebuild_cache.dir
