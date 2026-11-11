@@ -201,6 +201,12 @@ Average latency drops below the inference time because reused frames finish in a
 
 **Environment:** Raspberry Pi 3B+ (4× Cortex-A53 @ 1.4 GHz, 1 GB RAM) · Raspberry Pi OS 64-bit (Debian 13) · ONNX Runtime 1.20.1 aarch64 · YOLO11n · same video, 1 stream, queue size 1 · SoC temperature below 60 °C (no thermal throttling).
 
+<p>
+  <img src="docs/pi_board.jpg" width="360" alt="Raspberry Pi 3B+ with fan case">
+</p>
+
+![Final configuration running on the Raspberry Pi 3B+: 795 of 795 frames processed, 0 dropped](docs/pi_run.png)
+
 ### Final configuration (v2.1)
 
 224×224 INT8 · 3 intra-op threads · detection on every frame · no video output
