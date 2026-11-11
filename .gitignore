@@ -10,3 +10,8 @@ result.jpg
 videos/
 *.avi
 experiments/thread_demobuild-release/
+calib/
+datasets/
+calib/
+runs/
+yolo11n.pt
