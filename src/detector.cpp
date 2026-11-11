@@ -17,24 +17,17 @@ std::vector<float> preprocess(const cv::Mat& bgr, Letterbox& lb) {
     cv::Mat canvas(INPUT_H, INPUT_W, CV_8UC3, cv::Scalar(114, 114, 114));
     resized.copyTo(canvas(cv::Rect(lb.pad_x, lb.pad_y, new_w, new_h)));
 
-    cv::Mat rgb;
-    cv::cvtColor(canvas, rgb, cv::COLOR_BGR2RGB);
-
     cv::Mat f32;
-    rgb.convertTo(f32, CV_32FC3, 1.0 / 255.0);
+    canvas.convertTo(f32, CV_32FC3, 1.0 / 255.0);
 
     std::vector<float> chw(3 * INPUT_H * INPUT_W);
-    const float* src = f32.ptr<float>(0);
-
-    for (int c = 0; c < 3; ++c) {               
-        for (int y = 0; y < INPUT_H; ++y) {     
-            for (int x = 0; x < INPUT_W; ++x) { 
-                int hwc_index = (y * INPUT_W + x) * 3 + c;  
-                int chw_index = c * INPUT_H * INPUT_W + (y * INPUT_W + x); 
-                chw[chw_index] = src[hwc_index];
-            }
-        }
-    }
+    const int area = INPUT_H * INPUT_W;
+    std::vector<cv::Mat> ch = {
+        cv::Mat(INPUT_H, INPUT_W, CV_32F, chw.data() + 2 * area),
+        cv::Mat(INPUT_H, INPUT_W, CV_32F, chw.data() + 1 * area),
+        cv::Mat(INPUT_H, INPUT_W, CV_32F, chw.data() + 0 * area),
+    };
+    cv::split(f32, ch);
 
     return chw;
 }
